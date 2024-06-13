@@ -6,7 +6,7 @@ import './globals.css'; // Import the global styles
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
-  const [conversations, setConversations] = useState([]);
+  const [conversations, setConversations] = useState<{ prompt: string; response: any }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,7 +38,7 @@ export default function Home() {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          rows="5"
+          rows={5} // Change this line
           placeholder="Type your prompt here..."
         />
         <button type="submit" disabled={loading}>
