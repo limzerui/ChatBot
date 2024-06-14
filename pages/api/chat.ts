@@ -1,60 +1,35 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
+import { Configuration, OpenAIApi } from 'openai-edge';
+import { OpenAIStream, StreamingTextResponse } from 'ai';
 
-type Data = {
-  result?: string;
-  error?: string;
-};
+const config = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(config);
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<Data>
-) {
+export const runtime = 'edge';
+
+export default async function handler(req) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  console.log("OPENAI_API_KEY:", apiKey);
-
-  const { prompt } = req.body;
+  const { prompt } = await req.json();
 
   if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
+    return new Response('Prompt is required', { status: 400 });
   }
 
   try {
-    const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 100,
-        temperature: 0.7,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-      }
-    );
+    const response = await openai.createChatCompletion({
+      model: 'gpt-4',
+      stream: true,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
-    console.log("Response from OpenAI:", response.data);
-
-    const { choices } = response.data;
-    res.status(200).json({ result: choices[0].message.content });
+    const stream = OpenAIStream(response);
+    return new StreamingTextResponse(stream);
   } catch (error) {
-    if (error.response) {
-      console.error("Error response from OpenAI API:", error.response.data);
-      res.status(error.response.status).json({ error: error.response.data });
-    } else if (error.request) {
-      console.error("No response received from OpenAI API:", error.request);
-      res.status(500).json({ error: 'No response received from OpenAI API' });
-    } else {
-      console.error("Error setting up OpenAI API request:", error.message);
-      res.status(500).json({ error: error.message });
-    }
+    console.error('Error:', error);
+    return new Response('Internal Server Error', { status: 500 });
   }
 }

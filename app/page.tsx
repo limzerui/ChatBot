@@ -1,27 +1,60 @@
-'use client'; // Ensure this is the first line to enable client-side code
+'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
-import './globals.css'; // Import the global styles
+import './globals.css';
 
 export default function Home() {
   const [prompt, setPrompt] = useState('');
-  const [conversations, setConversations] = useState<{ prompt: string; response: any }[]>([]);
+  const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const res = await axios.post('/api/chat', { prompt });
-      const newConversation = {
-        prompt,
-        response: res.data.result
-      };
-      setConversations([...conversations, newConversation]);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!response.body) throw new Error('No response body');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let newConversation = { prompt, response: '' };
+      setConversations((prevConversations) => [...prevConversations, newConversation]);
+
+      let tempState = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const newValue = (tempState + chunk).split('\n\n').filter(Boolean);
+
+        for (const item of newValue) {
+          try {
+            const json = JSON.parse(item.replace(/^data: /, ''));
+            const content = json.choices[0].delta?.content || '';
+            newConversation.response += content;
+            setConversations((prevConversations) => {
+              const updatedConversations = [...prevConversations];
+              updatedConversations[updatedConversations.length - 1] = newConversation;
+              return updatedConversations;
+            });
+            tempState = '';
+          } catch (e) {
+            tempState = item;
+          }
+        }
+      }
+
       setPrompt(''); // Clear the input field after submission
     } catch (error) {
       console.error(error);
@@ -38,7 +71,7 @@ export default function Home() {
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          rows={5} // Change this line
+          rows={5}
           placeholder="Type your prompt here..."
         />
         <button type="submit" disabled={loading}>
